@@ -23,6 +23,7 @@ interface Feedback {
   image_url?: string;
   is_anonymous: boolean;
   upvotes: number;
+  has_upvoted: boolean;
   created_at: string;
   updated_at?: string;
 }
@@ -51,6 +52,9 @@ export default function FeedbackPage() {
   const [submitError, setSubmitError] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Lightbox state
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const fetchFeedbacks = async () => {
     try {
@@ -109,7 +113,9 @@ export default function FeedbackPage() {
       removeImage();
       fetchFeedbacks();
     } catch (err: unknown) {
-      setSubmitError(err instanceof Error ? err.message : "Failed to submit");
+      console.error("Feedback submit error:", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      setSubmitError(msg || "Failed to submit feedback");
     } finally {
       setSubmitting(false);
     }
@@ -117,10 +123,25 @@ export default function FeedbackPage() {
 
   const handleUpvote = async (id: string) => {
     if (!user) return;
+    // Optimistic update
+    setFeedbacks((prev) =>
+      prev.map((fb) =>
+        fb.id === id
+          ? {
+              ...fb,
+              has_upvoted: !fb.has_upvoted,
+              upvotes: fb.has_upvoted ? fb.upvotes - 1 : fb.upvotes + 1,
+            }
+          : fb
+      )
+    );
     try {
       await apiPost(`/api/feedback/${id}/upvote`);
       fetchFeedbacks();
-    } catch {}
+    } catch {
+      // Revert on error
+      fetchFeedbacks();
+    }
   };
 
   const canEdit = (fb: Feedback) => {
@@ -147,7 +168,7 @@ export default function FeedbackPage() {
         Hostel <span className="gradient-text">Feedback</span>
       </h1>
       <p className="text-[var(--text-secondary)] mb-8">
-        Share your experience and help improve hostel food & services.
+        Share your experience and help improve hostel food &amp; services.
       </p>
 
       {user && (
@@ -352,20 +373,47 @@ export default function FeedbackPage() {
                 <img
                   src={fb.image_url}
                   alt="Feedback"
-                  className="w-full max-w-xs rounded-xl mb-3 border border-[var(--border-color)]"
+                  onClick={() => setLightboxUrl(fb.image_url!)}
+                  className="w-full max-w-xs rounded-xl mb-3 border border-[var(--border-color)] cursor-pointer hover:opacity-80 transition-opacity"
                 />
               )}
 
               <button
                 onClick={() => handleUpvote(fb.id)}
                 disabled={!user}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg glass text-sm text-[var(--text-secondary)] hover:text-[var(--accent-secondary)] hover:border-[var(--accent-primary)] transition-all disabled:opacity-50"
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-all disabled:opacity-50 ${
+                  fb.has_upvoted
+                    ? "bg-[var(--accent-primary)]/20 text-[var(--accent-secondary)] border border-[var(--accent-primary)]/40"
+                    : "glass text-[var(--text-secondary)] hover:text-[var(--accent-secondary)] hover:border-[var(--accent-primary)]"
+                }`}
               >
-                <ThumbsUp size={14} />
+                <ThumbsUp size={14} className={fb.has_upvoted ? "fill-current" : ""} />
                 {fb.upvotes}
               </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Image Lightbox Modal */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh] w-full" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => setLightboxUrl(null)}
+              className="absolute -top-3 -right-3 z-10 w-8 h-8 rounded-full bg-[var(--danger)] text-white flex items-center justify-center shadow-lg hover:opacity-90 transition-opacity"
+            >
+              <X size={16} />
+            </button>
+            <img
+              src={lightboxUrl}
+              alt="Feedback image full view"
+              className="w-full h-auto max-h-[85vh] object-contain rounded-2xl border border-[var(--border-color)]"
+            />
+          </div>
         </div>
       )}
     </div>

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
-import { apiGet, apiPost, apiDelete } from "@/lib/api";
+import { apiGet, apiPost, apiDelete, apiPatch } from "@/lib/api";
 import {
   Shield,
   UtensilsCrossed,
@@ -13,6 +13,7 @@ import {
   Upload,
   BarChart3,
   ChevronDown,
+  X,
 } from "lucide-react";
 
 interface FeedbackItem {
@@ -62,6 +63,9 @@ export default function AdminPage() {
 
   const [users, setUsers] = useState<UserItem[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
+
+  // Image lightbox state
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authLoading && (!user || !isAdmin)) {
@@ -118,6 +122,32 @@ export default function AdminPage() {
       await apiDelete(`/api/admin/feedback/${id}`);
       setFeedbacks((prev) => prev.filter((fb) => fb.id !== id));
     } catch {}
+  };
+
+  const handleRoleChange = async (userId: string, email: string, currentRole: string) => {
+    const newRole = currentRole === "admin" ? "student" : "admin";
+    const confirmed = confirm(
+      `Are you sure you want to change ${email} from "${currentRole}" to "${newRole}"?`
+    );
+    if (!confirmed) return;
+
+    try {
+      await apiPatch(`/api/admin/users/${userId}/role`, { role: newRole });
+
+      // If the user changed their own role away from admin, redirect to home
+      if (userId === user?.id && newRole !== "admin") {
+        alert("Your role has been changed. You will be redirected.");
+        window.location.href = "/";
+        return;
+      }
+
+      // Otherwise, update the local list optimistically
+      setUsers((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u))
+      );
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to change role");
+    }
   };
 
   if (authLoading || !isAdmin) {
@@ -297,13 +327,12 @@ export default function AdminPage() {
                     </div>
                     <p className="text-sm text-[var(--text-primary)]">{fb.content}</p>
                     {fb.image_url && (
-                      <a href={fb.image_url} target="_blank" rel="noopener noreferrer" className="inline-block mt-2">
-                        <img
-                          src={fb.image_url}
-                          alt="Feedback attachment"
-                          className="w-20 h-20 object-cover rounded-lg border border-[var(--border-color)] hover:opacity-80 transition-opacity"
-                        />
-                      </a>
+                      <img
+                        src={fb.image_url}
+                        alt="Feedback attachment"
+                        onClick={() => setLightboxUrl(fb.image_url!)}
+                        className="w-20 h-20 object-cover rounded-lg border border-[var(--border-color)] hover:opacity-80 transition-opacity mt-2 cursor-pointer"
+                      />
                     )}
                     <p className="text-xs text-[var(--text-muted)] mt-1">
                       {new Date(fb.created_at).toLocaleDateString("en-IN")}
@@ -343,6 +372,9 @@ export default function AdminPage() {
                   <th className="text-left px-5 py-3 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">
                     Joined
                   </th>
+                  <th className="text-left px-5 py-3 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -363,11 +395,42 @@ export default function AdminPage() {
                     <td className="px-5 py-3 text-sm text-[var(--text-muted)]">
                       {new Date(u.created_at).toLocaleDateString("en-IN")}
                     </td>
+                    <td className="px-5 py-3">
+                      <button
+                        onClick={() => handleRoleChange(u.id, u.email, u.role)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium glass text-[var(--text-secondary)] hover:text-white transition-all"
+                      >
+                        <Shield size={12} />
+                        {u.role === "admin" ? "Make Student" : "Make Admin"}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
+        </div>
+      )}
+
+      {/* Image Lightbox Modal */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh] w-full" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => setLightboxUrl(null)}
+              className="absolute -top-3 -right-3 z-10 w-8 h-8 rounded-full bg-[var(--danger)] text-white flex items-center justify-center shadow-lg hover:opacity-90 transition-opacity"
+            >
+              <X size={16} />
+            </button>
+            <img
+              src={lightboxUrl}
+              alt="Feedback image full view"
+              className="w-full h-auto max-h-[85vh] object-contain rounded-2xl border border-[var(--border-color)]"
+            />
+          </div>
         </div>
       )}
     </div>

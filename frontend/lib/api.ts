@@ -78,3 +78,17 @@ export async function apiPostForm<T = unknown>(path: string, formData: FormData)
   }
   return res.json();
 }
+
+export async function apiPatch<T = unknown>(path: string, body: unknown): Promise<T> {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${BACKEND_URL}${path}`, {
+    method: "PATCH",
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `API error: ${res.status}`);
+  }
+  return res.json();
+}

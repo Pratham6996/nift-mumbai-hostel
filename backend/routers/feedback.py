@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, UploadFile, File, Form, Query
+from fastapi import APIRouter, Depends, UploadFile, File, Form, Query, Request
 from typing import Optional
 from models.feedback import FeedbackCreate, FeedbackUpdate, FeedbackCategory
 from models.user import TokenPayload
@@ -6,6 +6,25 @@ from auth_middleware import get_current_user, require_admin
 from services import feedback_service, storage_service
 
 router = APIRouter(prefix="/api", tags=["Feedback"])
+
+
+async def get_optional_user(request: Request) -> Optional[TokenPayload]:
+    """Return current user if authenticated, else None."""
+    from fastapi.security import HTTPBearer
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return None
+    try:
+        from fastapi.security import HTTPAuthorizationCredentials
+        creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=auth_header.split(" ", 1)[1])
+        from auth_middleware import _decode_token
+        payload = _decode_token(creds.credentials)
+        user_id = payload.get("sub")
+        if not user_id:
+            return None
+        return TokenPayload(sub=user_id, email=payload.get("email"), role=payload.get("role"), exp=payload.get("exp"))
+    except Exception:
+        return None
 
 
 def _enrich_feedback(fb: dict) -> dict:
@@ -27,16 +46,23 @@ def _enrich_feedback(fb: dict) -> dict:
 
 
 @router.get("/feedback")
-def list_feedback(
+async def list_feedback(
     limit: int = Query(default=50, le=100),
     offset: int = Query(default=0, ge=0),
+    current_user: Optional[TokenPayload] = Depends(get_optional_user),
 ):
     feedbacks = feedback_service.get_all_feedback(limit=limit, offset=offset)
+    user_id = current_user.sub if current_user else None
     sanitized = []
     for fb in feedbacks:
         item = _enrich_feedback(fb)
         if item.get("is_anonymous"):
             item.pop("user_id", None)
+        # Add per-user upvote status
+        if user_id:
+            item["has_upvoted"] = feedback_service.has_user_upvoted(fb["id"], user_id)
+        else:
+            item["has_upvoted"] = False
         sanitized.append(item)
     return sanitized
 

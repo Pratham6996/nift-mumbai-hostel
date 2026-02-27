@@ -21,7 +21,13 @@ def create_expense(user_id: str, expense: ExpenseCreate):
 def get_user_expenses(user_id: str, month: str = None, limit: int = 100, offset: int = 0):
     query = supabase.table("expenses").select("*").eq("user_id", user_id).order("date", desc=True)
     if month:
-        query = query.gte("date", f"{month}-01").lt("date", f"{month}-32")
+        # Calculate the first day of the next month as the upper bound
+        year, mon = int(month[:4]), int(month[5:7])
+        if mon == 12:
+            next_month = f"{year + 1}-01-01"
+        else:
+            next_month = f"{year}-{str(mon + 1).zfill(2)}-01"
+        query = query.gte("date", f"{month}-01").lt("date", next_month)
     result = query.range(offset, offset + limit - 1).execute()
     return result.data or []
 

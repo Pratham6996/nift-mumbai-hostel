@@ -110,7 +110,10 @@ export default function ExpensesPage() {
       setFormAmount("");
       setShowForm(false);
       fetchData();
-    } catch {}
+    } catch (err: unknown) {
+      console.error("Expense add error:", err);
+      alert(err instanceof Error ? err.message : "Failed to add expense");
+    }
     setSubmitting(false);
   };
 

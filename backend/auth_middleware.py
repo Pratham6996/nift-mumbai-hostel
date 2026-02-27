@@ -82,16 +82,35 @@ async def require_admin(
     current_user: TokenPayload = Depends(get_current_user),
 ) -> TokenPayload:
     from services.supabase_client import supabase
+    import logging
 
-    result = (
-        supabase.table("users")
-        .select("role")
-        .eq("id", current_user.sub)
-        .single()
-        .execute()
-    )
-    if not result.data or result.data.get("role") != "admin":
+    try:
+        result = (
+            supabase.table("users")
+            .select("role")
+            .eq("id", current_user.sub)
+            .limit(1)
+            .execute()
+        )
+        rows = result.data or []
+        if not rows:
+            logging.warning(f"require_admin: No user row found for id={current_user.sub}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin access required — user profile not found",
+            )
+        role = rows[0].get("role", "")
+        if role != "admin":
+            logging.warning(f"require_admin: User {current_user.sub} has role='{role}', not admin")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"require_admin: DB query failed: {e}")
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to verify admin status: {str(e)}",
         )
     return current_user
