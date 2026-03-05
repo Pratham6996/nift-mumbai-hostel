@@ -236,16 +236,22 @@ export default function FeedbackPage() {
                   Attach Image
                 </button>
 
-                <label className="flex items-center gap-2 cursor-pointer text-sm text-[var(--text-secondary)]">
-                  <input
-                    type="checkbox"
-                    checked={isAnonymous}
-                    onChange={(e) => setIsAnonymous(e.target.checked)}
-                    className="rounded accent-[var(--accent-primary)]"
-                  />
-                  <EyeOff size={14} />
-                  Post Anonymously
-                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsAnonymous(!isAnonymous)}
+                  className={`flex items-center gap-2.5 px-4 py-2 rounded-full text-sm font-medium border transition-all duration-300 cursor-pointer ${
+                    isAnonymous
+                      ? "bg-[var(--accent-primary)]/15 border-[var(--accent-primary)]/40 text-[var(--accent-primary)] shadow-md shadow-[var(--accent-glow)]"
+                      : "border-[var(--border-color)] text-[var(--text-muted)] hover:border-[var(--text-secondary)] hover:text-[var(--text-secondary)]"
+                  }`}
+                >
+                  {/* Toggle Track */}
+                  <div className={`relative w-8 h-[18px] rounded-full transition-colors duration-300 ${isAnonymous ? "bg-[var(--accent-primary)]" : "bg-[var(--border-color)]"}`}>
+                    <div className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white shadow-sm transition-all duration-300 ${isAnonymous ? "left-[16px]" : "left-[2px]"}`} />
+                  </div>
+                  <EyeOff size={14} className={`transition-opacity duration-300 ${isAnonymous ? "opacity-100" : "opacity-50"}`} />
+                  {isAnonymous ? "Anonymous Mode" : "Go Anonymous"}
+                </button>
               </div>
 
               {imagePreview && (

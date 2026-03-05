@@ -1,26 +1,17 @@
 import os
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
 
-SMTP_EMAIL = os.getenv("SMTP_EMAIL", "")
-SMTP_APP_PASSWORD = os.getenv("SMTP_APP_PASSWORD", "")
-SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+SMTP_EMAIL = os.getenv("SMTP_EMAIL", "niftmumbainosh@gmail.com")  # used as reply-to
 
 
 def send_otp_email(to_email: str, otp_code: str) -> bool:
-    """Send a 6-digit OTP to the given email address. Returns True on success."""
-    if not SMTP_EMAIL or not SMTP_APP_PASSWORD:
-        raise RuntimeError("SMTP credentials not configured. Set SMTP_EMAIL and SMTP_APP_PASSWORD in .env")
-
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"NIFT Mumbai Hostel — Your verification code: {otp_code}"
-    msg["From"] = f"NIFT Mumbai Hostel <{SMTP_EMAIL}>"
-    msg["To"] = to_email
+    """Send a 6-digit OTP to the given email address using Resend. Returns True on success."""
+    if not RESEND_API_KEY:
+        raise RuntimeError("RESEND_API_KEY not configured in environment variables")
 
     html_body = f"""
     <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background: #1a1a2e; border-radius: 16px; color: #e0e0e0;">
@@ -30,7 +21,7 @@ def send_otp_email(to_email: str, otp_code: str) -> bool:
         </div>
         <div style="background: #16213e; border-radius: 12px; padding: 24px; text-align: center; margin-bottom: 20px;">
             <p style="margin: 0 0 12px; font-size: 14px; color: #aaa;">Your verification code is</p>
-            <div style="font-size: 36px; font-weight: 700; letter-spacing: 8px; color: #a29bfe; margin: 8px 0;">
+            <div style="font-size: 36px; font-weight: 700; letter-spacing: 8px; color: #ee5a6f; margin: 8px 0;">
                 {otp_code}
             </div>
             <p style="margin: 12px 0 0; font-size: 12px; color: #666;">This code expires in 10 minutes</p>
@@ -41,17 +32,29 @@ def send_otp_email(to_email: str, otp_code: str) -> bool:
     </div>
     """
 
-    text_body = f"Your NIFT Mumbai Hostel verification code is: {otp_code}\nThis code expires in 10 minutes."
-
-    msg.attach(MIMEText(text_body, "plain"))
-    msg.attach(MIMEText(html_body, "html"))
-
     try:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_EMAIL, SMTP_APP_PASSWORD)
-            server.sendmail(SMTP_EMAIL, to_email, msg.as_string())
-        return True
+        response = httpx.post(
+            "https://api.resend.com/emails",
+            headers={
+                "Authorization": f"Bearer {RESEND_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "from": f"NIFT Mumbai Hostel <onboarding@resend.dev>",
+                "to": [to_email],
+                "reply_to": SMTP_EMAIL,
+                "subject": f"NIFT Mumbai Hostel — Your verification code: {otp_code}",
+                "html": html_body,
+            },
+            timeout=10,
+        )
+        if response.status_code == 200:
+            return True
+        else:
+            print(f"[EMAIL ERROR] Resend returned {response.status_code}: {response.text}")
+            raise RuntimeError(f"Failed to send verification email: {response.text}")
+    except httpx.TimeoutException:
+        raise RuntimeError("Email service timed out. Please try again.")
     except Exception as e:
         print(f"[EMAIL ERROR] Failed to send OTP to {to_email}: {e}")
         raise RuntimeError(f"Failed to send verification email: {str(e)}")
