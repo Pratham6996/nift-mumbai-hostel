@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import type { Session, User } from "@supabase/supabase-js";
 
@@ -8,6 +8,10 @@ interface UserProfile {
   id: string;
   email: string;
   role: "student" | "admin";
+  full_name: string | null;
+  department: string | null;
+  year: string | null;
+  profile_complete: boolean;
   created_at: string;
 }
 
@@ -16,8 +20,10 @@ interface AuthContextType {
   session: Session | null;
   profile: UserProfile | null;
   isAdmin: boolean;
+  needsProfile: boolean;
   loading: boolean;
   signOut: () => Promise<void>;
+  refreshProfile: () => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -25,8 +31,10 @@ const AuthContext = createContext<AuthContextType>({
   session: null,
   profile: null,
   isAdmin: false,
+  needsProfile: false,
   loading: true,
   signOut: async () => {},
+  refreshProfile: () => {},
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -38,7 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
   // Fetch profile in background — never awaited inside auth callbacks
-  const syncProfile = (token: string) => {
+  const syncProfile = useCallback((token: string) => {
     const controller = new AbortController();
     const headers = { Authorization: `Bearer ${token}` };
 
@@ -56,7 +64,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .catch(() => {}); // ignore abort / network errors
 
     return controller; // caller can .abort() if needed
-  };
+  }, [BACKEND_URL]);
+
+  // Exposed so the profile modal can refresh after update
+  const refreshProfile = useCallback(() => {
+    if (session?.access_token) {
+      syncProfile(session.access_token);
+    }
+  }, [session, syncProfile]);
 
   useEffect(() => {
     let controller: AbortController | null = null;
@@ -89,7 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       controller?.abort();
       subscription.unsubscribe();
     };
-  }, []);
+  }, [syncProfile]);
 
   const signOut = async () => {
     await supabase.auth.signOut();
@@ -98,8 +113,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
   };
 
+  const needsProfile = !!user && !!profile && !profile.profile_complete;
+
   return (
-    <AuthContext.Provider value={{ user, session, profile, isAdmin: profile?.role === "admin", loading, signOut }}>
+    <AuthContext.Provider value={{ user, session, profile, isAdmin: profile?.role === "admin", needsProfile, loading, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

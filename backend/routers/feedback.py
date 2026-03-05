@@ -1,11 +1,14 @@
 from fastapi import APIRouter, Depends, UploadFile, File, Form, Query, Request
 from typing import Optional
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from models.feedback import FeedbackCreate, FeedbackUpdate, FeedbackCategory
 from models.user import TokenPayload
 from auth_middleware import get_current_user, require_admin
 from services import feedback_service, storage_service
 
 router = APIRouter(prefix="/api", tags=["Feedback"])
+limiter = Limiter(key_func=get_remote_address)
 
 
 async def get_optional_user(request: Request) -> Optional[TokenPayload]:
@@ -46,18 +49,31 @@ def _enrich_feedback(fb: dict) -> dict:
 
 
 @router.get("/feedback")
+@limiter.limit("30/minute")
 async def list_feedback(
+    request: Request,
     limit: int = Query(default=50, le=100),
     offset: int = Query(default=0, ge=0),
     current_user: Optional[TokenPayload] = Depends(get_optional_user),
 ):
     feedbacks = feedback_service.get_all_feedback(limit=limit, offset=offset)
     user_id = current_user.sub if current_user else None
+
+    # Batch-fetch author names for non-anonymous posts
+    non_anon_user_ids = list({
+        fb["user_id"] for fb in feedbacks
+        if not fb.get("is_anonymous") and fb.get("user_id")
+    })
+    user_names = feedback_service.get_user_names(non_anon_user_ids)
+
     sanitized = []
     for fb in feedbacks:
         item = _enrich_feedback(fb)
         if item.get("is_anonymous"):
             item.pop("user_id", None)
+            item["author_name"] = None
+        else:
+            item["author_name"] = user_names.get(fb.get("user_id", ""), None)
         # Add per-user upvote status
         if user_id:
             item["has_upvoted"] = feedback_service.has_user_upvoted(fb["id"], user_id)
@@ -68,7 +84,9 @@ async def list_feedback(
 
 
 @router.post("/feedback")
+@limiter.limit("10/minute")
 async def create_feedback(
+    request: Request,
     category: FeedbackCategory = Form(...),
     content: str = Form(..., min_length=10, max_length=2000),
     is_anonymous: bool = Form(default=False),
@@ -89,7 +107,9 @@ async def create_feedback(
 
 
 @router.put("/feedback/{feedback_id}")
+@limiter.limit("10/minute")
 def update_feedback(
+    request: Request,
     feedback_id: str,
     update: FeedbackUpdate,
     current_user: TokenPayload = Depends(get_current_user),
@@ -99,7 +119,9 @@ def update_feedback(
 
 
 @router.post("/feedback/{feedback_id}/upvote")
+@limiter.limit("20/minute")
 def upvote_feedback(
+    request: Request,
     feedback_id: str,
     current_user: TokenPayload = Depends(get_current_user),
 ):
@@ -108,7 +130,9 @@ def upvote_feedback(
 
 
 @router.delete("/admin/feedback/{feedback_id}")
+@limiter.limit("5/minute")
 def delete_feedback(
+    request: Request,
     feedback_id: str,
     admin: TokenPayload = Depends(require_admin),
 ):
@@ -119,5 +143,6 @@ def delete_feedback(
 
 
 @router.get("/admin/feedback/stats")
-def feedback_stats(admin: TokenPayload = Depends(require_admin)):
+@limiter.limit("10/minute")
+def feedback_stats(request: Request, admin: TokenPayload = Depends(require_admin)):
     return feedback_service.get_feedback_stats()

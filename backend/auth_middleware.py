@@ -1,4 +1,5 @@
 import os
+import time
 import httpx
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -16,16 +17,20 @@ ALGORITHM_ES = "ES256"
 
 security = HTTPBearer()
 
-# Cache the JWKS keys
+# Cache the JWKS keys with TTL (1 hour)
 _jwks_cache: dict | None = None
+_jwks_cache_time: float = 0
+JWKS_CACHE_TTL = 3600  # seconds
 
 
-def _get_jwks() -> dict:
-    global _jwks_cache
-    if _jwks_cache is None:
+def _get_jwks(force_refresh: bool = False) -> dict:
+    global _jwks_cache, _jwks_cache_time
+    now = time.time()
+    if force_refresh or _jwks_cache is None or (now - _jwks_cache_time) > JWKS_CACHE_TTL:
         resp = httpx.get(f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json", timeout=10)
         resp.raise_for_status()
         _jwks_cache = resp.json()
+        _jwks_cache_time = now
     return _jwks_cache
 
 
@@ -41,11 +46,26 @@ def _decode_token(token: str) -> dict:
         jwks = _get_jwks()
         matching_keys = [k for k in jwks.get("keys", []) if k.get("kid") == kid]
         if not matching_keys:
-            raise JWTError("No matching key found in JWKS")
+            # Key not found — try refreshing JWKS in case keys were rotated
+            jwks = _get_jwks(force_refresh=True)
+            matching_keys = [k for k in jwks.get("keys", []) if k.get("kid") == kid]
+            if not matching_keys:
+                raise JWTError("No matching key found in JWKS")
         key = matching_keys[0]
-        return jwt.decode(
-            token, key, algorithms=[ALGORITHM_ES], options={"verify_aud": False}
-        )
+        try:
+            return jwt.decode(
+                token, key, algorithms=[ALGORITHM_ES], options={"verify_aud": False}
+            )
+        except JWTError:
+            # Decode failed — try refreshing JWKS once before giving up
+            jwks = _get_jwks(force_refresh=True)
+            matching_keys = [k for k in jwks.get("keys", []) if k.get("kid") == kid]
+            if not matching_keys:
+                raise
+            key = matching_keys[0]
+            return jwt.decode(
+                token, key, algorithms=[ALGORITHM_ES], options={"verify_aud": False}
+            )
     else:
         # Fallback to HS256 with the JWT secret
         return jwt.decode(

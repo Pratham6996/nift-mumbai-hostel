@@ -116,6 +116,14 @@ def has_user_upvoted(feedback_id: str, user_id: str) -> bool:
     return bool(check.data)
 
 
+def get_user_names(user_ids: list[str]) -> dict[str, str]:
+    """Batch-fetch full_name for a list of user IDs. Returns {user_id: full_name}."""
+    if not user_ids:
+        return {}
+    result = supabase.table("users").select("id, full_name").in_("id", user_ids).execute()
+    return {row["id"]: row.get("full_name") or "Unknown" for row in (result.data or [])}
+
+
 def get_feedback_stats():
     result = supabase.table("feedback").select("*").execute()
     all_fb = result.data or []

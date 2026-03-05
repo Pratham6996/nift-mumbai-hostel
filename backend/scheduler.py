@@ -1,5 +1,5 @@
 from apscheduler.schedulers.background import BackgroundScheduler
-from services.cleanup_service import delete_old_images
+from services.cleanup_service import delete_old_images, delete_orphaned_images
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,8 +16,16 @@ def start_scheduler():
         id="cleanup_old_images",
         replace_existing=True,
     )
+    scheduler.add_job(
+        delete_orphaned_images,
+        trigger="cron",
+        hour=3,
+        minute=0,
+        id="cleanup_orphaned_images",
+        replace_existing=True,
+    )
     scheduler.start()
-    logger.info("Scheduler started: daily image cleanup at 2:00 AM")
+    logger.info("Scheduler started: daily cleanups at 2:00 AM and 3:00 AM")
 
 
 def stop_scheduler():

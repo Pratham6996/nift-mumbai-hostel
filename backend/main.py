@@ -42,17 +42,17 @@ app.add_middleware(
         "http://127.0.0.1:3001",
     ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
-from routers import menu, feedback, expenses, admin, auth
+from routers import menu, feedback, admin, auth, verify
 
 app.include_router(menu.router)
 app.include_router(feedback.router)
-app.include_router(expenses.router)
 app.include_router(admin.router)
 app.include_router(auth.router)
+app.include_router(verify.router)
 
 
 @app.get("/")

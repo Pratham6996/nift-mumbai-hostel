@@ -13,6 +13,7 @@ import {
   Filter,
   Clock,
   Pencil,
+  User as UserIcon,
 } from "lucide-react";
 
 interface Feedback {
@@ -22,6 +23,7 @@ interface Feedback {
   content: string;
   image_url?: string;
   is_anonymous: boolean;
+  author_name?: string;
   upvotes: number;
   has_upvoted: boolean;
   created_at: string;
@@ -38,7 +40,7 @@ const categoryColors: Record<string, string> = {
 };
 
 export default function FeedbackPage() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterCat, setFilterCat] = useState<string>("");
@@ -171,7 +173,7 @@ export default function FeedbackPage() {
         Share your experience and help improve hostel food &amp; services.
       </p>
 
-      {user && (
+      {user && !isAdmin && (
         <form
           onSubmit={handleSubmit}
           className="glass rounded-2xl p-6 mb-8 space-y-4"
@@ -344,11 +346,15 @@ export default function FeedbackPage() {
                   <span className={`px-3 py-1 rounded-lg text-xs font-medium border capitalize ${categoryColors[fb.category]}`}>
                     {fb.category}
                   </span>
-                  {fb.is_anonymous && (
+                  {fb.is_anonymous ? (
                     <span className="flex items-center gap-1 text-xs text-[var(--text-muted)]">
                       <EyeOff size={12} /> Anonymous
                     </span>
-                  )}
+                  ) : fb.author_name ? (
+                    <span className="flex items-center gap-1 text-xs text-[var(--text-secondary)]">
+                      <UserIcon size={12} /> {fb.author_name}
+                    </span>
+                  ) : null}
                 </div>
                 <div className="flex items-center gap-2">
                   {canEdit(fb) && (

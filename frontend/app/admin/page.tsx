@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { apiGet, apiPost, apiDelete, apiPatch } from "@/lib/api";
@@ -23,6 +23,7 @@ interface FeedbackItem {
   content: string;
   image_url?: string;
   is_anonymous: boolean;
+  author_name?: string;
   upvotes: number;
   created_at: string;
 }
@@ -36,6 +37,10 @@ interface UserItem {
   id: string;
   email: string;
   role: string;
+  full_name: string | null;
+  department: string | null;
+  year: string | null;
+  profile_complete: boolean;
   created_at: string;
 }
 
@@ -66,6 +71,34 @@ export default function AdminPage() {
 
   // Image lightbox state
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+
+  // Highlight user from feedback click
+  const [highlightUserId, setHighlightUserId] = useState<string | null>(null);
+  const userRowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
+
+  const navigateToUser = useCallback((userId: string) => {
+    setHighlightUserId(userId);
+    setActiveTab("users");
+  }, []);
+
+  // Scroll to highlighted user row when users tab loads
+  useEffect(() => {
+    if (activeTab === "users" && highlightUserId && !usersLoading && users.length > 0) {
+      // Small delay to ensure refs are populated after render
+      const scrollTimer = setTimeout(() => {
+        const row = userRowRefs.current[highlightUserId];
+        if (row) {
+          row.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }, 100);
+      // Clear highlight after 3 seconds
+      const clearTimer = setTimeout(() => setHighlightUserId(null), 3000);
+      return () => {
+        clearTimeout(scrollTimer);
+        clearTimeout(clearTimer);
+      };
+    }
+  }, [activeTab, highlightUserId, usersLoading, users]);
 
   useEffect(() => {
     if (!authLoading && (!user || !isAdmin)) {
@@ -321,9 +354,16 @@ export default function AdminPage() {
                       <span className="text-xs text-[var(--text-muted)]">
                         👍 {fb.upvotes}
                       </span>
-                      {fb.is_anonymous && (
+                      {fb.is_anonymous ? (
                         <span className="text-xs text-[var(--text-muted)]">🕶️ Anonymous</span>
-                      )}
+                      ) : fb.author_name ? (
+                        <button
+                          onClick={() => navigateToUser(fb.user_id)}
+                          className="text-xs text-[var(--accent-secondary)] hover:underline cursor-pointer transition-colors"
+                        >
+                          👤 {fb.author_name}
+                        </button>
+                      ) : null}
                     </div>
                     <p className="text-sm text-[var(--text-primary)]">{fb.content}</p>
                     {fb.image_url && (
@@ -364,7 +404,16 @@ export default function AdminPage() {
               <thead>
                 <tr className="border-b border-[var(--border-color)]">
                   <th className="text-left px-5 py-3 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">
+                    Name
+                  </th>
+                  <th className="text-left px-5 py-3 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">
                     Email
+                  </th>
+                  <th className="text-left px-5 py-3 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">
+                    Department
+                  </th>
+                  <th className="text-left px-5 py-3 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">
+                    Year
                   </th>
                   <th className="text-left px-5 py-3 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">
                     Role
@@ -379,8 +428,25 @@ export default function AdminPage() {
               </thead>
               <tbody>
                 {users.map((u) => (
-                  <tr key={u.id} className="border-b border-[var(--border-color)] last:border-0 hover:bg-[var(--bg-card-hover)] transition-colors">
-                    <td className="px-5 py-3 text-sm">{u.email}</td>
+                  <tr
+                    key={u.id}
+                    ref={(el) => { userRowRefs.current[u.id] = el; }}
+                    className={`border-b border-[var(--border-color)] last:border-0 hover:bg-[var(--bg-card-hover)] transition-all duration-500 ${
+                      highlightUserId === u.id
+                        ? "bg-[var(--accent-primary)]/10 ring-1 ring-[var(--accent-primary)]/40"
+                        : ""
+                    }`}
+                  >
+                    <td className="px-5 py-3 text-sm">
+                      {u.full_name || <span className="text-[var(--text-muted)] italic">Not set</span>}
+                    </td>
+                    <td className="px-5 py-3 text-sm text-[var(--text-secondary)]">{u.email}</td>
+                    <td className="px-5 py-3 text-sm text-[var(--text-secondary)]">
+                      {u.department || <span className="text-[var(--text-muted)]">—</span>}
+                    </td>
+                    <td className="px-5 py-3 text-sm text-[var(--text-secondary)]">
+                      {u.year || <span className="text-[var(--text-muted)]">—</span>}
+                    </td>
                     <td className="px-5 py-3">
                       <span
                         className={`text-xs font-medium px-2.5 py-1 rounded-lg ${

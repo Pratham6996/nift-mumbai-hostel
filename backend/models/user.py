@@ -13,11 +13,21 @@ class UserOut(BaseModel):
     id: str
     email: str
     role: UserRole
+    full_name: Optional[str] = None
+    department: Optional[str] = None
+    year: Optional[str] = None
+    profile_complete: bool = False
     created_at: datetime
 
 
 class UserCreate(BaseModel):
     email: EmailStr
+
+
+class ProfileUpdate(BaseModel):
+    full_name: str
+    department: str
+    year: str
 
 
 class TokenPayload(BaseModel):
