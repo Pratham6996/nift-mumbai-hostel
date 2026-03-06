@@ -119,6 +119,8 @@ def verify_otp(request: Request, body: VerifyOtpRequest):
         })
     except Exception as e:
         error_msg = str(e)
+        print(f"[AUTH ERROR] admin.create_user failed for {email}: {error_msg}")
+        print(f"[AUTH ERROR] Exception type: {type(e).__name__}")
         if "already" in error_msg.lower():
             supabase.table("email_otps").delete().eq("email", email).execute()
             raise HTTPException(status_code=409, detail="An account with this email already exists.")
